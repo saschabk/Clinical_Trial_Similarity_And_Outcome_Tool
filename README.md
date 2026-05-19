@@ -158,10 +158,3 @@ You can get a free NCBI API key at [ncbi.nlm.nih.gov/account](https://www.ncbi.n
 - **ClinicalTrials.gov** — Trial data retrieved via the [ClinicalTrials.gov API v2](https://clinicaltrials.gov/data-api/api). Public domain.
 - **PubMed** — Publication data retrieved via [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25497/). Subject to NCBI terms of use.
 
----
-
-## Academic Context
-
-Developed as a practicum project for **CSE 6748** in partnership with **Sandia National Laboratories**.
-
-
