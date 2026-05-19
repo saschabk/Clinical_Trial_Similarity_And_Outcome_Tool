@@ -31,11 +31,11 @@ pubmed = None
 summarizer = None
 
 # Configuration
-INDEX_FILE = 'trial_similarity_index_complete.pkl'
-#PUBMED_EMAIL = os.environ.get('PUBMED_EMAIL', 'swsssyy@gmail.com')
-#PUBMED_API_KEY = os.environ.get('PUBMED_API_KEY', '6a95c76ef56d446860e03242eb36d2f0b808')  # Optional
-PUBMED_EMAIL = 'swsssyy@gmail.com'
-PUBMED_API_KEY = '6a95c76ef56d446860e03242eb36d2f0b808'
+INDEX_FILE = 'trial_similarity_index_complete.pkl'  
+
+# Optional
+PUBMED_EMAIL = '123@gmail.com'
+PUBMED_API_KEY = '123'
 
 
 def initialize_engine():
