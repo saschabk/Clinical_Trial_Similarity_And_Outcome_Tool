@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Trial Similarity Search + PubMed Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 15px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .filters {
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .checkbox-filter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .checkbox-filter:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .checkbox-filter input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-filter label {
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .checkbox-filter.pubmed-filter {
+            border-color: #28a745;
+            background: #f0fff4;
+        }
+
+        .checkbox-filter.pubmed-filter:hover {
+            background: #e0ffe8;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .query-trial {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .query-trial h3 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .query-trial .nct {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .filter-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            margin-right: 8px;
+            margin-top: 8px;
+        }
+
+        .trial-card {
+            border: 2px solid #eee;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+
+        .trial-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .trial-card.has-publication {
+            border-left: 4px solid #28a745;
+        }
+
+        .trial-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .rank {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+            min-width: 50px;
+        }
+
+        .nct-link {
+            font-family: 'Courier New', monospace;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .nct-link:hover {
+            text-decoration: underline;
+        }
+
+        .trial-title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .trial-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .detail-item {
+            color: #666;
+        }
+
+        .detail-item strong {
+            color: #333;
+        }
+
+        .info-section {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .info-section strong {
+            color: #333;
+        }
+
+        .similarity-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .badge-high {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .similarity-breakdown {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .sim-item {
+            text-align: center;
+        }
+
+        .sim-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .sim-value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .sim-bar {
+            height: 6px;
+            background: #ddd;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .sim-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .sim-design {
+            background: #667eea;
+        }
+
+        .sim-text {
+            background: #764ba2;
+        }
+
+        .sim-outcomes {
+            background: #48bb78;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        /* ============================================
+           PUBMED PUBLICATION STYLES
+           ============================================ */
+        
+        .publication-section {
+            margin-top: 15px;
+            padding: 15px;
+            background: linear-gradient(135deg, #f0fff4 0%, #e8f5e9 100%);
+            border-radius: 8px;
+            border: 1px solid #c8e6c9;
+        }
+
+        .publication-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .publication-icon {
+            background: #28a745;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .publication-header h4 {
+            color: #28a745;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .publication-confidence {
+            margin-left: auto;
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background: rgba(40, 167, 69, 0.2);
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .publication-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .publication-title a {
+            color: #1565c0;
+            text-decoration: none;
+        }
+
+        .publication-title a:hover {
+            text-decoration: underline;
+        }
+
+        .publication-meta {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .publication-meta span {
+            margin-right: 15px;
+        }
+
+        .publication-meta .journal {
+            font-style: italic;
+        }
+
+        .publication-meta .pmid {
+            font-family: 'Courier New', monospace;
+            background: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .outcome-summary {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            border-left: 3px solid #28a745;
+        }
+
+        .outcome-summary-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .outcome-summary-header h5 {
+            color: #333;
+            font-size: 13px;
+            margin: 0;
+        }
+
+        .outcome-summary-confidence {
+            font-size: 11px;
+            color: #666;
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .outcome-summary-text {
+            font-size: 13px;
+            color: #444;
+            line-height: 1.5;
+        }
+
+        .no-publication {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            text-align: center;
+            color: #999;
+            font-size: 13px;
+        }
+
+        .match-method-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+        }
+
+        .match-method-badge.direct {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .match-method-badge.fuzzy {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .match-method-badge.condition {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        /* Query trial publication */
+        .query-publication {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            color: white;
+        }
+
+        .query-publication h4 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .query-publication .pub-title {
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .query-publication .pub-title a {
+            color: white;
+            text-decoration: underline;
+        }
+
+        .query-publication .pub-meta {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .query-publication .pub-summary {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        /* Loading states */
+        .pub-loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            color: #28a745;
+            font-size: 13px;
+        }
+
+        .pub-loading .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #28a745;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toggle button for publications */
+        .toggle-publications {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #e8f5e9;
+            color: #28a745;
+            border: 1px solid #28a745;
+            border-radius: 5px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .toggle-publications:hover {
+            background: #28a745;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Clinical Trial Similarity Search</h1>
+            <p class="subtitle">Find similar trials and their published research outcomes</p>
+
+            <div class="search-box">
+                <input type="text" id="nctInput" placeholder="Enter NCT ID (e.g., NCT04280705)">
+                <button id="searchBtn" onclick="searchSimilar()">Search</button>
+            </div>
+
+            <div class="filters">
+                <div class="filter-group">
+                    <div class="checkbox-filter">
+                        <input type="checkbox" id="sameDrug">
+                        <label for="sameDrug">Same Drug/Intervention</label>
+                    </div>
+                    <div class="checkbox-filter">
+                        <input type="checkbox" id="sameDisease">
+                        <label for="sameDisease">Same Disease/Condition</label>
+                    </div>
+                    <div class="checkbox-filter pubmed-filter">
+                        <input type="checkbox" id="fetchPublications" checked>
+                        <label for="fetchPublications">Fetch PubMed Publications</label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error" style="display: none;" class="error"></div>
+        </div>
+
+        <div id="resultsContainer"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5001';
+
+        function getSimilarityBadge(score) {
+            const percent = (score * 100).toFixed(1);
+            if (score >= 0.8) return `<span class="similarity-badge badge-high">${percent}% Match</span>`;
+            if (score >= 0.6) return `<span class="similarity-badge badge-medium">${percent}% Match</span>`;
+            return `<span class="similarity-badge badge-low">${percent}% Match</span>`;
+        }
+
+        function getMatchMethodBadge(method) {
+            const labels = {
+                'direct_nctid': { text: 'Direct NCT Match', class: 'direct' },
+                'fuzzy_title': { text: 'Title Match', class: 'fuzzy' },
+                'condition_intervention': { text: 'Content Match', class: 'condition' }
+            };
+            const info = labels[method] || { text: method, class: 'fuzzy' };
+            return `<span class="match-method-badge ${info.class}">${info.text}</span>`;
+        }
+
+        async function searchSimilar() {
+            const nctId = document.getElementById('nctInput').value.trim().toUpperCase();
+            const errorDiv = document.getElementById('error');
+            const resultsContainer = document.getElementById('resultsContainer');
+            const searchBtn = document.getElementById('searchBtn');
+
+            errorDiv.style.display = 'none';
+            resultsContainer.innerHTML = '<div class="card loading">Searching for similar trials...</div>';
+            searchBtn.disabled = true;
+
+            if (!nctId) {
+                errorDiv.textContent = 'Please enter an NCT ID';
+                errorDiv.style.display = 'block';
+                resultsContainer.innerHTML = '';
+                searchBtn.disabled = false;
+                return;
+            }
+
+            const weights = { design: 0.50, text: 0.20, outcomes: 0.30 };
+            const sameDrug = document.getElementById('sameDrug').checked;
+            const sameDisease = document.getElementById('sameDisease').checked;
+            const fetchPublications = document.getElementById('fetchPublications').checked;
+
+            try {
+                // Use full-search endpoint if fetching publications
+                const endpoint = fetchPublications ? '/api/full-search' : '/api/search';
+                
+                const response = await fetch(`${API_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nct_id: nctId,
+                        top_k: 10,
+                        weights: weights,
+                        same_drug: sameDrug,
+                        same_disease: sameDisease,
+                        fetch_publications: fetchPublications
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to fetch results');
+                }
+
+                const data = await response.json();
+                displayResults(data, fetchPublications);
+
+            } catch (error) {
+                errorDiv.textContent = error.message;
+                errorDiv.style.display = 'block';
+                resultsContainer.innerHTML = '';
+            } finally {
+                searchBtn.disabled = false;
+            }
+        }
+
+        function renderPublication(pub, isQueryTrial = false) {
+            if (!pub) {
+                return isQueryTrial ? '' : `
+                    <div class="no-publication">
+                        No linked publication found
+                    </div>
+                `;
+            }
+
+            if (isQueryTrial) {
+                // Compact version for query trial
+                return `
+                    <div class="query-publication">
+                        <h4>Linked Publication</h4>
+                        <div class="pub-title">
+                            <a href="${pub.pubmed_url}" target="_blank">${pub.title}</a>
+                        </div>
+                        <div class="pub-meta">
+                            <span>${pub.journal}</span> • <span>${pub.pub_date}</span>
+                        </div>
+                        ${pub.outcome_summary ? `
+                            <div class="pub-summary">
+                                <strong>Outcomes Summary:</strong> ${pub.outcome_summary.summary}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            // Full version for similar trials
+            return `
+                <div class="publication-section">
+                    <div class="publication-header">
+                        <div class="publication-icon">P</div>
+                        <h4>Linked Publication</h4>
+                        ${getMatchMethodBadge(pub.match_method)}
+                        <div class="publication-confidence">
+                            ${(pub.match_confidence * 100).toFixed(0)}% confidence
+                        </div>
+                    </div>
+                    
+                    <div class="publication-title">
+                        <a href="${pub.pubmed_url}" target="_blank">${pub.title}</a>
+                    </div>
+                    
+                    <div class="publication-meta">
+                        <span class="journal">${pub.journal}</span>
+                        <span>${pub.pub_date}</span>
+                        <span class="pmid">PMID: ${pub.pmid}</span>
+                    </div>
+
+                    ${pub.outcome_summary ? `
+                        <div class="outcome-summary">
+                            <div class="outcome-summary-header">
+                                <h5>Outcome Summary</h5>
+                                <span class="outcome-summary-confidence">
+                                    ${pub.outcome_summary.method} • ${(pub.outcome_summary.confidence * 100).toFixed(0)}% confidence
+                                </span>
+                            </div>
+                            <div class="outcome-summary-text">
+                                ${pub.outcome_summary.summary}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function displayResults(data, showPublications) {
+            const resultsContainer = document.getElementById('resultsContainer');
+            
+            let html = '';
+
+            if (data.query_trial) {
+                const q = data.query_trial;
+                const filters = data.filters_applied || {};
+                
+                html += `
+                    <div class="card">
+                        <h2 style="margin-bottom: 15px;">Query Trial</h2>
+                        <div class="query-trial">
+                            <div class="nct">${q.nct_id}</div>
+                            <h3>${q.brief_title}</h3>
+                            <div style="margin-top: 10px; font-size: 14px;">
+                                <div><strong>Type:</strong> ${q.study_type} | <strong>Phase:</strong> ${q.phase}</div>
+                                <div style="margin-top: 5px;"><strong>Conditions:</strong> ${q.conditions}</div>
+                                <div style="margin-top: 5px;"><strong>Interventions:</strong> ${q.interventions}</div>
+                            </div>
+                            ${filters.same_drug ? '<span class="filter-badge">Same Drug Filter Active</span>' : ''}
+                            ${filters.same_disease ? '<span class="filter-badge">Same Disease Filter Active</span>' : ''}
+                            ${showPublications && q.publication ? renderPublication(q.publication, true) : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (data.similar_trials && data.similar_trials.length > 0) {
+                const pubCount = data.similar_trials.filter(t => t.publication).length;
+                html += `
+                    <div class="card">
+                        <h2 style="margin-bottom: 20px;">
+                            Similar Trials (${data.total_found} found)
+                            ${showPublications ? `<span style="font-size: 14px; color: #28a745; margin-left: 10px;">${pubCount} with publications</span>` : ''}
+                        </h2>
+                `;
+                
+                data.similar_trials.forEach((trial, idx) => {
+                    const hasPub = trial.publication != null;
+                    
+                    html += `
+                        <div class="trial-card ${hasPub ? 'has-publication' : ''}">
+                            <div class="trial-header">
+                                <div class="rank">#${idx + 1}</div>
+                                <div style="flex: 1;">
+                                    <a href="https://clinicaltrials.gov/study/${trial.nct_id}" target="_blank" class="nct-link">
+                                        ${trial.nct_id}
+                                    </a>
+                                </div>
+                                ${getSimilarityBadge(trial.overall_similarity)}
+                            </div>
+                            
+                            <div class="trial-title">${trial.brief_title}</div>
+                            
+                            <div class="trial-details">
+                                <div class="detail-item"><strong>Type:</strong> ${trial.study_type}</div>
+                                <div class="detail-item"><strong>Phase:</strong> ${trial.phase}</div>
+                                <div class="detail-item"><strong>Enrollment:</strong> ${trial.enrollment}</div>
+                                <div class="detail-item"><strong>Arms:</strong> ${trial.num_arms}</div>
+                            </div>
+                            
+                            <div class="info-section">
+                                <strong>Conditions:</strong> ${trial.conditions}
+                            </div>
+                            
+                            <div class="info-section">
+                                <strong>Interventions:</strong> ${trial.interventions}
+                            </div>
+                            
+                            ${trial.primary_outcomes ? `
+                                <div class="info-section">
+                                    <strong>Primary Outcomes:</strong> ${trial.primary_outcomes}
+                                </div>
+                            ` : ''}
+                            
+                            <div style="font-size: 12px; color: #999; margin-bottom: 15px;">
+                                <strong>Sponsor:</strong> ${trial.sponsor}
+                            </div>
+                            
+                            <div class="similarity-breakdown">
+                                <div class="sim-item">
+                                    <div class="sim-label">Design</div>
+                                    <div class="sim-value" style="color: #667eea;">
+                                        ${(trial.design_similarity * 100).toFixed(1)}%
+                                    </div>
+                                    <div class="sim-bar">
+                                        <div class="sim-bar-fill sim-design" style="width: ${trial.design_similarity * 100}%"></div>
+                                    </div>
+                                </div>
+                                <div class="sim-item">
+                                    <div class="sim-label">Text</div>
+                                    <div class="sim-value" style="color: #764ba2;">
+                                        ${(trial.text_similarity * 100).toFixed(1)}%
+                                    </div>
+                                    <div class="sim-bar">
+                                        <div class="sim-bar-fill sim-text" style="width: ${trial.text_similarity * 100}%"></div>
+                                    </div>
+                                </div>
+                                <div class="sim-item">
+                                    <div class="sim-label">Outcomes</div>
+                                    <div class="sim-value" style="color: #48bb78;">
+                                        ${(trial.outcome_similarity * 100).toFixed(1)}%
+                                    </div>
+                                    <div class="sim-bar">
+                                        <div class="sim-bar-fill sim-outcomes" style="width: ${trial.outcome_similarity * 100}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            ${showPublications ? renderPublication(trial.publication) : ''}
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            } else {
+                html += `
+                    <div class="card empty-state">
+                        <p>No similar trials found with current filters</p>
+                        <p style="font-size: 14px; margin-top: 10px;">Try removing filters or adjusting search criteria</p>
+                    </div>
+                `;
+            }
+
+            resultsContainer.innerHTML = html;
+        }
+
+        document.getElementById('nctInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchSimilar();
+            }
+        });
+    </script>
+</body>
+</html>
