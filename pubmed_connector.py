@@ -811,9 +811,12 @@ class OutcomeSummarizer:
     Summarizes clinical trial outcomes using various methods.
     
     Supports:
-    1. Rule-based extraction (fast, no dependencies)
-    2. Transformer-based summarization (better quality, requires transformers)
-    3. API-based summarization (best quality, requires API key)
+    1. Rule-based extraction (fast, no dependencies, no cost)
+    2. Transformer-based summarization (good quality, requires transformers library, runs locally)
+    3. Gemini-based summarization (best quality, cheapest API option - $0.10/1M input tokens)
+    4. OpenAI-based summarization (high quality, more expensive)
+    
+    Recommended: Use 'gemini' for best balance of quality and cost.
     """
     
     def __init__(self, method: str = 'rule_based'):
@@ -821,15 +824,28 @@ class OutcomeSummarizer:
         Initialize summarizer.
         
         Args:
-            method: 'rule_based', 'transformer', or 'api'
+            method: 'rule_based', 'transformer', 'gemini', or 'openai'
         """
         self.method = method
         self._transformer_model = None
-        self._api_key = None
+        self._gemini_api_key = None
+        self._openai_api_key = None
+    
+    def set_gemini_api_key(self, api_key: str):
+        """
+        Set API key for Gemini-based summarization.
+        
+        Get your free API key at: https://aistudio.google.com/app/apikey
+        """
+        self._gemini_api_key = api_key
+    
+    def set_openai_api_key(self, api_key: str):
+        """Set API key for OpenAI-based summarization."""
+        self._openai_api_key = api_key
     
     def set_api_key(self, api_key: str):
-        """Set API key for API-based summarization."""
-        self._api_key = api_key
+        """Legacy method - sets Gemini key for backward compatibility."""
+        self._gemini_api_key = api_key
     
     def summarize(self, 
                   abstract: str, 
@@ -850,8 +866,13 @@ class OutcomeSummarizer:
             return self._rule_based_summary(abstract, max_length)
         elif self.method == 'transformer':
             return self._transformer_summary(abstract, max_length)
+        elif self.method == 'gemini':
+            return self._gemini_summary(abstract, trial_title, max_length)
+        elif self.method == 'openai':
+            return self._openai_summary(abstract, trial_title, max_length)
         elif self.method == 'api':
-            return self._api_summary(abstract, trial_title, max_length)
+            # Legacy support - defaults to gemini
+            return self._gemini_summary(abstract, trial_title, max_length)
         else:
             raise ValueError(f"Unknown method: {self.method}")
     
@@ -962,20 +983,41 @@ class OutcomeSummarizer:
             print(f"Transformer error: {e}. Falling back to rule-based.")
             return self._rule_based_summary(abstract, max_length)
     
-    def _api_summary(self, abstract: str, trial_title: str, max_length: int) -> Dict[str, Any]:
-        """Generate summary using external API (e.g., OpenAI, Anthropic)."""
-        if not self._api_key:
-            print("No API key set. Falling back to rule-based.")
+    def _gemini_summary(self, abstract: str, trial_title: str, max_length: int) -> Dict[str, Any]:
+        """
+        Generate summary using Google Gemini API.
+        
+        Gemini Flash is extremely cost-effective:
+        - Input: $0.10 per 1 million tokens
+        - Output: $0.40 per 1 million tokens
+        - A typical abstract (~300 tokens) costs about $0.00003 to summarize
+        
+        This method sends the abstract to Gemini with a carefully crafted prompt
+        that instructs the model to extract key clinical outcomes, efficacy data,
+        and safety findings in a concise format.
+        """
+        if not self._gemini_api_key:
+            print("No Gemini API key set. Falling back to rule-based.")
+            print("Get your free key at: https://aistudio.google.com/app/apikey")
             return self._rule_based_summary(abstract, max_length)
         
-        # This is a placeholder - implement with your preferred API
-        # Example structure for OpenAI:
         try:
-            import openai
-            openai.api_key = self._api_key
+            from google import genai
+            from google.genai import types
             
-            prompt = f"""Summarize the following clinical trial results in {max_length} words or less. 
-Focus on the key efficacy and safety findings.
+            # Initialize the client with your API key
+            client = genai.Client(api_key=self._gemini_api_key)
+            
+            # Craft a prompt specifically designed for clinical trial outcome extraction
+            prompt = f"""You are a clinical research analyst. Summarize the key outcomes from this clinical trial publication in {max_length} words or less.
+
+Focus on:
+1. Primary efficacy results (response rates, survival data, primary endpoints)
+2. Key statistical findings (p-values, hazard ratios, confidence intervals)
+3. Safety profile (adverse events, tolerability)
+4. Main conclusions
+
+Be concise and factual. Use specific numbers when available.
 
 Trial: {trial_title or 'Clinical Trial'}
 
@@ -984,22 +1026,88 @@ Abstract:
 
 Summary:"""
             
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+            # Generate the summary using Gemini 2.5 Flash Lite (cost-effective and available)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=max_length * 2,
+                    temperature=0.2
+                )
+            )
+            
+            return {
+                'summary': response.text.strip(),
+                'method': 'gemini',
+                'model': 'gemini-2.5-flash-lite',
+                'confidence': 0.90
+            }
+            
+        except ImportError:
+            print("Google GenAI library not installed.")
+            print("Install with: pip install google-genai")
+            return self._rule_based_summary(abstract, max_length)
+        except Exception as e:
+            print(f"Gemini API error: {e}. Falling back to rule-based.")
+            return self._rule_based_summary(abstract, max_length)
+    
+    def _openai_summary(self, abstract: str, trial_title: str, max_length: int) -> Dict[str, Any]:
+        """
+        Generate summary using OpenAI API.
+        
+        Uses GPT-4o-mini which is cost-effective:
+        - Input: $0.15 per 1 million tokens  
+        - Output: $0.60 per 1 million tokens
+        
+        Slightly more expensive than Gemini but some users prefer OpenAI.
+        """
+        if not self._openai_api_key:
+            print("No OpenAI API key set. Falling back to rule-based.")
+            return self._rule_based_summary(abstract, max_length)
+        
+        try:
+            from openai import OpenAI
+            
+            # Initialize the OpenAI client
+            client = OpenAI(api_key=self._openai_api_key)
+            
+            prompt = f"""You are a clinical research analyst. Summarize the key outcomes from this clinical trial publication in {max_length} words or less.
+
+Focus on:
+1. Primary efficacy results (response rates, survival data, primary endpoints)
+2. Key statistical findings (p-values, hazard ratios, confidence intervals)
+3. Safety profile (adverse events, tolerability)
+4. Main conclusions
+
+Be concise and factual. Use specific numbers when available.
+
+Trial: {trial_title or 'Clinical Trial'}
+
+Abstract:
+{abstract}
+
+Summary:"""
+            
+            # Call the OpenAI API
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",  # Cheapest GPT-4 class model
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_length * 2,
-                temperature=0.3
+                temperature=0.2
             )
             
             return {
                 'summary': response.choices[0].message.content.strip(),
-                'method': 'api',
-                'model': 'gpt-3.5-turbo',
-                'confidence': 0.9
+                'method': 'openai',
+                'model': 'gpt-4o-mini',
+                'confidence': 0.90
             }
             
+        except ImportError:
+            print("OpenAI library not installed. Install with: pip install openai")
+            return self._rule_based_summary(abstract, max_length)
         except Exception as e:
-            print(f"API error: {e}. Falling back to rule-based.")
+            print(f"OpenAI API error: {e}. Falling back to rule-based.")
             return self._rule_based_summary(abstract, max_length)
 
 
@@ -1040,19 +1148,36 @@ def match_trial_to_publications(
 
 def summarize_trial_outcomes(
     abstract: str,
-    method: str = 'rule_based'
+    method: str = 'rule_based',
+    gemini_api_key: str = None,
+    openai_api_key: str = None
 ) -> Dict[str, Any]:
     """
     Convenience function to summarize trial outcomes.
     
     Args:
         abstract: Article abstract
-        method: 'rule_based', 'transformer', or 'api'
+        method: 'rule_based', 'transformer', 'gemini', or 'openai'
+        gemini_api_key: API key for Gemini (required if method='gemini')
+        openai_api_key: API key for OpenAI (required if method='openai')
     
     Returns:
         Summary dictionary
+    
+    Example usage with Gemini:
+        summary = summarize_trial_outcomes(
+            abstract="Background: This study evaluated...",
+            method='gemini',
+            gemini_api_key='your-api-key-here'
+        )
     """
     summarizer = OutcomeSummarizer(method=method)
+    
+    if gemini_api_key:
+        summarizer.set_gemini_api_key(gemini_api_key)
+    if openai_api_key:
+        summarizer.set_openai_api_key(openai_api_key)
+    
     return summarizer.summarize(abstract)
 
 
@@ -1102,3 +1227,24 @@ if __name__ == "__main__":
         
         print(f"\nSummary ({summary['method']}, confidence: {summary['confidence']:.2f}):")
         print(summary['summary'])
+        
+        # Example of using Gemini (uncomment and add your API key to test)
+        print("\n" + "-" * 60)
+        print("To use Gemini for better summaries:")
+        print("-" * 60)
+        print("""
+# 1. Install the library:
+pip install google-generativeai
+
+# 2. Get your free API key at:
+https://aistudio.google.com/app/apikey
+
+# 3. Use it in your code:
+import os
+os.environ['GEMINI_API_KEY'] = 'your-key-here'
+
+summarizer = OutcomeSummarizer(method='gemini')
+summarizer.set_gemini_api_key(os.environ['GEMINI_API_KEY'])
+summary = summarizer.summarize(abstract, trial_title="Your Trial Title")
+print(summary['summary'])
+""")
